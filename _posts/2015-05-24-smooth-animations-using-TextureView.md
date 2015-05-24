@@ -5,7 +5,7 @@ feature-img: "img/sample_feature_img.png"
 ---
 
 On multiple occasions I was faced with enthusiastic idea of implementing a CSS inspired animation. The problem with those is they are time consuming and tend to not look as good as expected. A little stuttering in the animation, wrong type of interpolation or color mixing and your loader looses all charm. In this article I would like to show off a technique I use to keep animations as smooth and as charming as possible.
-
+<!--more-->
 Let's use this one as an example [Source](http://codepen.io/wifeo/pen/FBpJq):
 
 {% include loader1.html %}
