@@ -4,7 +4,7 @@ title: Smooth Canvas animations using TextureView
 feature-img: "img/sample_feature_img.png"
 ---
 
-On multiple occasions I was faced with enthusiastic idea of implementing a CSS inspired animation. The problem with those is they are time consuming and tend to not look as good as expected. A little stuttering in the animation, wrong type of interpolation or color mixing and your loader looses all charm. In this article I would like to show off a technique I use to keep animations as smooth and as charming as possible.
+On multiple occasions I was faced with enthusiastic idea of implementing a CSS inspired animation. The problem with those is they are time consuming and in the end, tend not to look as good as expected. A little stuttering in the animation, wrong type of interpolation or color mixing and your loader looses all charm. In this article I would like to show off a technique I use to keep animations as smooth and as charming as possible.
 <!--more-->
 Let's use this one as an example [Source](http://codepen.io/wifeo/pen/FBpJq):
 
@@ -12,7 +12,7 @@ Let's use this one as an example [Source](http://codepen.io/wifeo/pen/FBpJq):
 
 The code presented here assumes API level 14+. Also, I decided to use Kotlin but the translation to Java should be easy enough.
 
-You can find the complete [source code here](TODO).
+You can find the complete [source code here](https://gist.github.com/andrzej-tokarski/a129abd82a5529229f9c).
 
 #### Dissecting the animation
 
@@ -88,10 +88,6 @@ animator.addUpdateListener(object:ValueAnimator.AnimatorUpdateListener {
 
 Note that drawFrame() will run on main thread so you should keep it simple.
 
-#### Drawing frames
-
-All that is left to implement is the frame drawing itself. I will spare you the details, you can find the complete code [here](http://TODO). Here are a few interesting titbits:
-
 ##### CSS animation easing
 
 Looks like all "steps" in CSS animation are calculated separately. There is one ease curve between each of:
@@ -114,13 +110,13 @@ In loader animation are defined in CSS as a full cycle:
 The easiest way of defining both is to split LinearInterpolator range in two: 0f -> 1f -> 2f and reversing scale animation when value is bigger then 1f.
 
 {% highlight kotlin %}
-    override fun drawFrame(width: Float, height: Float, value: Float) {
-        val posInterpolator = if(Build.VERSION.SDK_INT >= 21) {
+    val posInterpolator = if(Build.VERSION.SDK_INT >= 21) {
             PathInterpolator(0.25f, 0.1f, 0.25f, 1f)
         } else {
             com.codewise.animations.AccelerateDecelerateInterpolator()
             // https://developer.android.com/sdk/api_diff/22/changes.html
         }
+    override fun drawFrame(width: Float, height: Float, value: Float) {
         val interpolatedPosition = if(value < 1f) {
             posInterpolator.getInterpolation(value)
         } else {
@@ -131,7 +127,7 @@ The easiest way of defining both is to split LinearInterpolator range in two: 0f
     }
 {% endhighlight %}
 
-This way the drawing code will be much shorter.
+This way the drawing code will be much shorter but also a little bit hackish.
 
 ##### AccelerateDecelerateInterpolator before ApiLevel 21
 
@@ -141,6 +137,75 @@ Looks like Google decided to change the implementation of AccelerateDecelerateIn
 
 You need to explicitly warn the system about the need to keep the background transparent by calling setOpaque(false). Also, to clear the canvas before drawing the next frame you have to use canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR) to make sure it has any effect. 
 
-##### Scaling the canvas
+##### Drawing itself
 
-Original animation scales the whole container. I decided to keep it simple and scale the circles instead by recalculating the diameter.
+Original animation scales the whole container. I decided to keep it simple and scale the circles instead. I did that by recalculating the diameter. There is a slight difference in the result but it is very hard to notice. The last step is to create the drawing code itself. It's a little bit tedious and very dependent on the design itself but here it is. I started with two helper methods. One for drawing a ball itself, somewhere between two positions and one for calculating the position. 
+
+{% highlight kotlin %}
+private fun drawBall(x1: Float, x2: Float, y1: Float, y2: Float, r1: Float, r2: Float, position: Float, reverse: Boolean, color: Int, paint: Paint, canvas: Canvas) {
+    val alpha = (255 * interpolate(1f, 0.5f, position, reverse)).toInt()
+    paint.setColor(color)
+    paint.setAlpha(alpha)
+    canvas.drawCircle(
+        interpolate(x1, x2, position, reverse),
+        interpolate(y1, y2, position, reverse),
+        interpolate(r1, r2, position, reverse),
+        paint)
+}
+
+private fun interpolate(start: Float, end: Float, delta: Float, reverse: Boolean): Float {
+    if(reverse) {
+        return end + (start-end) * delta;
+    } else {
+        return start + (end-start) * delta;
+    }
+}
+{% endhighlight %}
+
+And putting it all together is a drawFrame() method called from precise-timed onAnimationUpdate() callback:
+
+{% highlight kotlin %}
+private fun drawFrame(width: Float, height: Float, position: Float, reverse: Boolean) {
+    val canvas: Canvas? = lockCanvas()
+
+    if(canvas == null)
+        return
+
+    canvas.translate((canvas.getWidth() - width) / 2f, (canvas.getHeight() - height) / 2f)
+    canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+
+    val w2 = width / 2f
+    val w4 = width / 4f
+
+    val r_1 = 0.8f * w4
+    val r_2 = 1f * w4
+
+    canvas.rotate(360f * position, w2, w2)
+
+    drawBall(w4, w2,
+            w4, w2,
+            r_1, r_2,
+            position, reverse, color1, paint, canvas)
+
+    drawBall(3*w4, w2,
+            w4, w2,
+            r_1, r_2,
+            position, reverse, color2, paint, canvas)
+
+    drawBall(w4, w2,
+            3*w4, w2,
+            r_1, r_2,
+            position, reverse, color3, paint, canvas)
+
+    drawBall(3*w4, w2,
+            3*w4, w2,
+            r_1, r_2,
+            position, reverse, color4, paint, canvas)
+
+    unlockCanvasAndPost(canvas)
+}
+{% endhighlight %}
+
+### The takeaway
+
+This task is a nice example of a hidden trap for a developer. It's very easy to ignore the context and just run with a new Thread() in extended View and get a poor result. But a nicer effect can be achieved without much added complexity and with the same Canvas-drawing code just by using the TextureView and ObjectAnimators APIs.
